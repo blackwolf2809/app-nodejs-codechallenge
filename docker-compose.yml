@@ -7,12 +7,17 @@ services:
     environment:
       - POSTGRES_USER=postgres
       - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=yape-db
+    networks:
+      - yape-network       
   zookeeper:
-    image: confluentinc/cp-zookeeper:5.5.3
+    image: confluentinc/cp-zookeeper:latest
     environment:
       ZOOKEEPER_CLIENT_PORT: 2181
+    networks:
+      - yape-network       
   kafka:
-    image: confluentinc/cp-enterprise-kafka:5.5.3
+    image: confluentinc/cp-kafka:latest
     depends_on: [zookeeper]
     environment:
       KAFKA_ZOOKEEPER_CONNECT: "zookeeper:2181"
@@ -23,3 +28,72 @@ services:
       KAFKA_JMX_PORT: 9991
     ports:
       - 9092:9092
+    networks:
+      - yape-network       
+  transaction:
+    depends_on: [kafka]
+    build:
+      context: ./microservices/transaction
+      dockerfile: Dockerfile
+    ports:
+      - '3000:3000'
+    environment:
+      - NODE_ENV=production
+      - GRAPHQL_HOST=graphql
+      - PORT=3000
+      - KAFKA_GROUP_ID=yape-group-kafka
+      - KAFKA_CLIENT_ID=yape-client-kafka
+      - KAFKA_BROKER=kafka:29092      
+    networks:
+      - yape-network
+  antifraud:
+    depends_on: [kafka]
+    build:
+      context: ./microservices/antifraud
+      dockerfile: Dockerfile
+    ports:
+      - '3001:3001'
+    environment:
+      - NODE_ENV=production
+      - GRAPHQL_HOST=graphql
+      - PORT=3001
+      - KAFKA_GROUP_ID=yape-group-kafka
+      - KAFKA_CLIENT_ID=yape-client-kafka
+      - KAFKA_BROKER=kafka:29092      
+    networks:
+      - yape-network
+  transaction-consumer:
+    depends_on: [kafka]
+    build:
+      context: ./microservices/transaction-consumer
+      dockerfile: Dockerfile
+    ports:
+      - '3002:3002'
+    environment:
+      - NODE_ENV=production
+      - GRAPHQL_HOST=graphql
+      - PORT=3002
+      - KAFKA_GROUP_ID=yape-transaction-group-kafka
+      - KAFKA_CLIENT_ID=yape-transaction-client-kafka
+      - KAFKA_BROKER=kafka:29092      
+    networks:
+      - yape-network                        
+  graphql:
+    depends_on: [postgres]
+    build:
+      context: ./microservices/transaction-graphql
+    ports:
+      - '3003:3003'
+    environment:
+      - NODE_ENV=production
+      - DB_NAME=yape-db
+      - DB_HOST=postgres
+      - DB_PASS=postgres
+      - DB_USER=postgres
+      - DB_PORT=5432      
+      - PORT=3003
+    networks:
+      - yape-network      
+networks:
+  yape-network:
+    driver: bridge
